@@ -1,20 +1,25 @@
-# Simple Blockchain Prototype in Go
+# Simple Blockchain with Proof of Work in Go
 
-This is a minimal blockchain implementation written in Go. It demonstrates how a basic blockchain works by chaining blocks together using cryptographic hashes.
+This is a minimal blockchain implementation written in Go. It demonstrates how a basic blockchain works by chaining blocks together using cryptographic hashes and includes a simple Proof-of-Work (PoW) mechanism for mining new blocks.
 
 ## 🔧 Features
 
 - Creates a genesis block
 - Adds new blocks to the chain
-- Each block contains:
+- Each block includes:
   - Timestamp
   - Data (e.g. transactions)
   - Hash of the previous block
   - Its own SHA-256 hash
+  - Nonce (for PoW)
+- Implements Proof-of-Work:
+  - Adjusts difficulty using `targetBits`
+  - Mines blocks by finding a valid nonce
+  - Validates the PoW of each block
 
 ## 🧱 How It Works
 
-Each block stores data and references the hash of the previous block. When a block is added, a hash is computed from its content and the previous block’s hash, ensuring immutability.
+Each block stores data and references the hash of the previous block. A SHA-256 hash is computed from the block content, the previous block's hash, and a nonce. The PoW algorithm ensures the resulting hash is below a target value, which enforces difficulty and secures the chain.
 
 ## 📦 Getting Started
 
@@ -28,8 +33,6 @@ Clone the repository and run:
 
 ```bash
 go run main.go
-```
-
 ### Sample Output
 
 ```
@@ -49,7 +52,6 @@ Hash: d4e5f6...
 ## 📝 Notes
 
 This is a very simplified example and is not suitable for production use. It doesn't include:
-- Proof of Work
 - Networking
 - Transactions
 - Security layers
