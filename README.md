@@ -42,8 +42,8 @@ Make sure you have Go installed:
 Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/simple-blockchain-go.git
-cd simple-blockchain-go
+git clone https://github.com/loid-lab/blockchain.git
+cd blockchain
 go run main.go
 ```
 
