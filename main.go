@@ -1,148 +1,219 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha256"
+	"flag"
 	"fmt"
-	"math"
-	"math/big"
-	"strconv"
-	"time"
+	"log"
+	"os"
+
+	"github.com/boltdb/bolt"
 )
 
-const targetBits = 24
-const maxNonce = math.MaxInt64 // Max number of nonce attempts
+const dbFile = "blockchain.db"
+const blocksBucket = "blocks"
 
-// Block represents a single block in the blockchain
 type Block struct {
-	Timestamp     int64
-	Data          []byte
-	PrevBlockHash []byte
-	Hash          []byte
-	Nonce         int
+	Hash     []byte
+	Data     []byte
+	PrevHash []byte
 }
 
-// BlockChain stores a sequence of blocks
+type BlockchainIterator struct {
+	currentHash []byte
+	db          *bolt.DB
+}
+
 type BlockChain struct {
-	blocks []*Block
+	tip []byte
+	db  *bolt.DB
 }
 
-// ProofOfWork contains block and target for PoW
-type ProofOfWork struct {
-	block  *Block
-	target *big.Int
+type CLI struct {
+	bc *BlockChain
 }
 
-// NewProofOfWork initializes a PoW for a block
-func NewProofOfWork(b *Block) *ProofOfWork {
-	target := big.NewInt(1)
-	target.Lsh(target, uint(256-targetBits)) // shift left to set difficulty
-	return &ProofOfWork{b, target}
-}
-
-// prepareData prepares the data for hashing
-func (pow *ProofOfWork) prepareData(nonce int) []byte {
-	data := bytes.Join(
-		[][]byte{
-			pow.block.PrevBlockHash,
-			pow.block.Data,
-			IntToHex(pow.block.Timestamp),
-			IntToHex(int64(targetBits)),
-			IntToHex(int64(nonce)),
-		},
-		[]byte{},
-	)
-	return data
-}
-
-// Run executes the PoW algorithm
-func (pow *ProofOfWork) Run() (int, []byte) {
-	var hashInt big.Int
-	var hash [32]byte
-	nonce := 0
-
-	fmt.Printf("Mining the block containing \"%s\"\n", pow.block.Data)
-
-	for nonce < maxNonce {
-		data := pow.prepareData(nonce)
-		hash = sha256.Sum256(data)
-
-		// Uncomment to see hashes in real time
-		// fmt.Printf("\r%x", hash)
-
-		hashInt.SetBytes(hash[:])
-		if hashInt.Cmp(pow.target) == -1 {
-			break
-		} else {
-			nonce++
-		}
-	}
-	fmt.Printf("\n\n")
-	return nonce, hash[:]
-}
-
-// Validate validates the PoW result
-func (pow *ProofOfWork) Validate() bool {
-	var hashInt big.Int
-	data := pow.prepareData(pow.block.Nonce)
-	hash := sha256.Sum256(data)
-	hashInt.SetBytes(hash[:])
-	return hashInt.Cmp(pow.target) == -1
-}
-
-// IntToHex converts int64 to []byte
-func IntToHex(n int64) []byte {
-	return []byte(strconv.FormatInt(n, 10))
-}
-
-// NewBlock creates and mines a new block
-func NewBlock(data string, prevBlockHash []byte) *Block {
+// Create a new block
+func NewBlock(data string, prevHash []byte) *Block {
 	block := &Block{
-		Timestamp:     time.Now().Unix(),
-		Data:          []byte(data),
-		PrevBlockHash: prevBlockHash,
-		Hash:          []byte{},
-		Nonce:         0,
+		Hash:     []byte{}, // You should hash content properly in production
+		Data:     []byte(data),
+		PrevHash: prevHash,
 	}
-	pow := NewProofOfWork(block)
-	nonce, hash := pow.Run()
-
-	block.Hash = hash
-	block.Nonce = nonce
+	block.Hash = []byte(fmt.Sprintf("%x", data+string(prevHash))) // Fake hash for demo
 	return block
 }
 
-// AddBlock adds a new block to the blockchain
+// Serialize block (dummy for now)
+func (b *Block) Serialize() []byte {
+	return append(b.PrevHash, b.Data...)
+}
+
+// Deserialize block (dummy for now)
+func DeserializeBlock(data []byte) *Block {
+	return &Block{
+		Data:     data[32:], // Fake split
+		PrevHash: data[:32],
+		Hash:     []byte{},
+	}
+}
+
+// Create genesis block
+func Genesis() *Block {
+	return NewBlock("Genesis", []byte{})
+}
+
+// Add block to the DB-based chain
 func (bc *BlockChain) AddBlock(data string) {
-	prevBlock := bc.blocks[len(bc.blocks)-1]
-	newBlock := NewBlock(data, prevBlock.Hash)
-	bc.blocks = append(bc.blocks, newBlock)
+	var lastHash []byte
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	newBlock := NewBlock(data, lastHash)
+
+	err = bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		err := b.Put(newBlock.Hash, newBlock.Serialize())
+		if err != nil {
+			return err
+		}
+		err = b.Put([]byte("l"), newBlock.Hash)
+		if err != nil {
+			return err
+		}
+		bc.tip = newBlock.Hash
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-// NewGenesisBlock creates the first block
-func NewGenesisBlock() *Block {
-	return NewBlock("Genesis Block", []byte{})
-}
-
-// NewBlockchain creates a blockchain with genesis block
+// Create a new blockchain DB
 func NewBlockchain() *BlockChain {
-	return &BlockChain{[]*Block{NewGenesisBlock()}}
+	var tip []byte
+
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		if b == nil {
+			genesis := Genesis()
+			b, err := tx.CreateBucket([]byte(blocksBucket))
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = b.Put(genesis.Hash, genesis.Serialize())
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = b.Put([]byte("l"), genesis.Hash)
+			tip = genesis.Hash
+			return err
+		} else {
+			tip = b.Get([]byte("l"))
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &BlockChain{tip, db}
 }
 
-// main runs the app
-func main() {
-	bc := NewBlockchain()
-	bc.AddBlock("Send 1 BTC to Ivan")
-	bc.AddBlock("Send 2 more BTC to Ivan")
+func (bc *BlockChain) Iterator() *BlockchainIterator {
+	return &BlockchainIterator{bc.tip, bc.db}
+}
 
-	for _, block := range bc.blocks {
-		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
+func (i *BlockchainIterator) Next() *Block {
+	var block *Block
+
+	err := i.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		encodedBlock := b.Get(i.currentHash)
+		block = DeserializeBlock(encodedBlock)
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	i.currentHash = block.PrevHash
+	return block
+}
+
+// CLI methods
+func (cli *CLI) printChain() {
+	iter := cli.bc.Iterator()
+
+	for {
+		block := iter.Next()
+
+		fmt.Printf("Prev. hash: %x\n", block.PrevHash)
 		fmt.Printf("Data: %s\n", block.Data)
 		fmt.Printf("Hash: %x\n", block.Hash)
-		fmt.Printf("Nonce: %d\n", block.Nonce)
-
-		pow := NewProofOfWork(block)
-		fmt.Printf("PoW valid: %v\n", pow.Validate())
 		fmt.Println()
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
 	}
+}
+
+func (cli *CLI) addBlock(data string) {
+	cli.bc.AddBlock(data)
+	fmt.Println("Block added.")
+}
+
+func (cli *CLI) Run() {
+	addBlockCmd := flag.NewFlagSet("addblock", flag.ExitOnError)
+	printChainCmd := flag.NewFlagSet("printchain", flag.ExitOnError)
+
+	addBlockData := addBlockCmd.String("data", "", "Block data")
+
+	if len(os.Args) < 2 {
+		fmt.Println("expected 'addblock' or 'printchain' subcommands")
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "addblock":
+		addBlockCmd.Parse(os.Args[2:])
+	case "printchain":
+		printChainCmd.Parse(os.Args[2:])
+	default:
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	if addBlockCmd.Parsed() {
+		if *addBlockData == "" {
+			addBlockCmd.Usage()
+			os.Exit(1)
+		}
+		cli.addBlock(*addBlockData)
+	}
+
+	if printChainCmd.Parsed() {
+		cli.printChain()
+	}
+}
+
+func main() {
+	bc := NewBlockchain()
+	defer bc.db.Close()
+
+	cli := CLI{bc}
+	cli.Run()
 }
