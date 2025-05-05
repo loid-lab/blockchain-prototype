@@ -19,12 +19,16 @@ This is a minimal blockchain implementation written in Go. It demonstrates how a
   - Mines blocks by finding a valid nonce
   - Validates PoW on each block
 - ✅ Uses BoltDB for local data storage
+- ✅ Added support for transactions and transaction rewards
+- ✅ Added wallet functionality with public/private key pairs
 
 ---
 
 ## 🧠 How It Works
 
-Each block contains data and references the previous block's hash. A SHA-256 hash is computed from the block's data, previous hash, and a nonce. The Proof-of-Work algorithm ensures the block hash is below a target value, enforcing difficulty and securing the blockchain.
+Each block contains data and references the previous block's hash. A SHA-256 hash is computed from the block's data, previous hash, and a nonce. The Proof-of-Work algorithm ensures the block hash is below a target value, enforcing difficulty and securing the blockchain. 
+
+The blockchain now supports transactions, where each block may contain one or more transactions. Each wallet generates public/private keys and is used to manage transactions and block mining.
 
 ---
 
@@ -53,7 +57,9 @@ go run main.go
 
 | Command             | Description                        |
 |---------------------|------------------------------------|
-| `addblock -data=X`  | Adds a block with data "X"         |
+| `addblock -data=X`  | Adds a block with transaction data |
+| `createwallet`      | Creates a new wallet (public/private key pair) |
+| `miningreward`      | Creates a mining reward transaction (coinbase) |
 | `printchain`        | Prints all blocks in the blockchain |
 
 #### Example
