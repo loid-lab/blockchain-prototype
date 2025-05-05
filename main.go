@@ -5,17 +5,22 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/boltdb/bolt"
 )
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
+const subsidy = 10
 
 type Block struct {
-	Hash     []byte
-	Data     []byte
-	PrevHash []byte
+	Timestamp     int64
+	Transactions  []*Transaction
+	PrevBlockHash []byte
+	Hash          []byte
+	Data          []byte
+	PrevHash      []byte
 }
 
 type BlockchainIterator struct {
@@ -32,37 +37,52 @@ type CLI struct {
 	bc *BlockChain
 }
 
-// Create a new block
+type Transaction struct {
+	ID   []byte
+	Vin  []TxtInput
+	Vout []TXOutput
+}
+
+type TXOutput struct {
+	Value        int
+	ScriptPubKey string
+}
+
+type TxtInput struct {
+	Txid      []byte
+	Vout      int
+	ScriptSig string
+}
+
 func NewBlock(data string, prevHash []byte) *Block {
 	block := &Block{
-		Hash:     []byte{}, // You should hash content properly in production
-		Data:     []byte(data),
-		PrevHash: prevHash,
+		Timestamp:     time.Now().Unix(),
+		Transactions:  []*Transaction{},
+		PrevBlockHash: prevHash,
+		Hash:          []byte{},
+		Data:          []byte(data),
+		PrevHash:      prevHash,
 	}
-	block.Hash = []byte(fmt.Sprintf("%x", data+string(prevHash))) // Fake hash for demo
+	block.Hash = []byte(fmt.Sprintf("%x", data+string(prevHash)))
 	return block
 }
 
-// Serialize block (dummy for now)
+func Genesis() *Block {
+	return NewBlock("Genesis", []byte{})
+}
+
 func (b *Block) Serialize() []byte {
 	return append(b.PrevHash, b.Data...)
 }
 
-// Deserialize block (dummy for now)
 func DeserializeBlock(data []byte) *Block {
 	return &Block{
-		Data:     data[32:], // Fake split
+		Data:     data[32:],
 		PrevHash: data[:32],
 		Hash:     []byte{},
 	}
 }
 
-// Create genesis block
-func Genesis() *Block {
-	return NewBlock("Genesis", []byte{})
-}
-
-// Add block to the DB-based chain
 func (bc *BlockChain) AddBlock(data string) {
 	var lastHash []byte
 
@@ -84,18 +104,14 @@ func (bc *BlockChain) AddBlock(data string) {
 			return err
 		}
 		err = b.Put([]byte("l"), newBlock.Hash)
-		if err != nil {
-			return err
-		}
 		bc.tip = newBlock.Hash
-		return nil
+		return err
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-// Create a new blockchain DB
 func NewBlockchain() *BlockChain {
 	var tip []byte
 
@@ -124,7 +140,6 @@ func NewBlockchain() *BlockChain {
 		}
 		return nil
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -153,13 +168,11 @@ func (i *BlockchainIterator) Next() *Block {
 	return block
 }
 
-// CLI methods
 func (cli *CLI) printChain() {
 	iter := cli.bc.Iterator()
 
 	for {
 		block := iter.Next()
-
 		fmt.Printf("Prev. hash: %x\n", block.PrevHash)
 		fmt.Printf("Data: %s\n", block.Data)
 		fmt.Printf("Hash: %x\n", block.Hash)
@@ -211,9 +224,17 @@ func (cli *CLI) Run() {
 }
 
 func main() {
-	bc := NewBlockchain()
-	defer bc.db.Close()
-
-	cli := CLI{bc}
+	cli := CLI{NewBlockchain()}
 	cli.Run()
+}
+
+func NewCoinBaseTX(to, data string) *Transaction {
+	if data == "" {
+		data = fmt.Sprintf("Reward to '%s'", to)
+	}
+
+	txin := TxtInput{[]byte{}, -1, data}
+	txout := TXOutput{subsidy, to}
+	tx := Transaction{nil, []TxtInput{txin}, []TXOutput{txout}}
+	return &tx
 }
