@@ -21,6 +21,11 @@ This is a minimal blockchain implementation written in Go. It demonstrates how a
 - ✅ Uses BoltDB for local data storage
 - ✅ Added support for transactions and transaction rewards
 - ✅ Added wallet functionality with public/private key pairs
+- ✅ Network Support:
+  - Starts a TCP server node
+  - Nodes can send and receive blocks and transactions
+  - Handles new block propagation across the network
+  - Includes basic peer-to-peer functionality
 
 ---
 
@@ -28,7 +33,7 @@ This is a minimal blockchain implementation written in Go. It demonstrates how a
 
 Each block contains data and references the previous block's hash. A SHA-256 hash is computed from the block's data, previous hash, and a nonce. The Proof-of-Work algorithm ensures the block hash is below a target value, enforcing difficulty and securing the blockchain. 
 
-The blockchain now supports transactions, where each block may contain one or more transactions. Each wallet generates public/private keys and is used to manage transactions and block mining.
+The blockchain now supports transactions, where each block may contain one or more transactions. Each wallet generates public/private keys and is used to manage transactions and block mining. A peer-to-peer network allows nodes to communicate, propagate new blocks and transactions, and maintain consensus.
 
 ---
 
@@ -92,7 +97,7 @@ Hash: ghi789...
 
 This is a **learning** and **demo** project. It does not include:
 - Real cryptographic hash functions or difficulty adjustments
-- Networking (no P2P nodes)
+- Full consensus or network security (basic P2P is included)
 - Wallets or real transactions
 - Security, encryption, or signatures
 

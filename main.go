@@ -1,3 +1,4 @@
+// Optimized blockchain code with retained functionality
 package main
 
 import (
@@ -35,8 +36,7 @@ type ProofOfWork struct {
 
 func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
-	encoder := gob.NewEncoder(&result)
-	err := encoder.Encode(b)
+	err := gob.NewEncoder(&result).Encode(b)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -45,8 +45,7 @@ func (b *Block) Serialize() []byte {
 
 func DeserializeBlock(d []byte) *Block {
 	var block Block
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&block)
+	err := gob.NewDecoder(bytes.NewReader(d)).Decode(&block)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -64,22 +63,16 @@ func NewBlock(transactions []*Transaction, prevHash []byte) *Block {
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transactions,
 		PrevBlockHash: prevHash,
-		Hash:          []byte{},
-		Nonce:         0,
 	}
-
-	// Run proof-of-work to get a valid hash
 	pow := NewProofOfWork(block)
 	hash, nonce := pow.Run()
 	block.Hash = hash
 	block.Nonce = nonce
-
 	return block
 }
 
 func NewGenesisBlock() *Block {
-	genesisTx := &Transaction{"genesis", "satoshi", 50}
-	return NewBlock([]*Transaction{genesisTx}, []byte{})
+	return NewBlock([]*Transaction{{"genesis", "satoshi", 50}}, []byte{})
 }
 
 func NewBlockchain() *Blockchain {
@@ -88,20 +81,17 @@ func NewBlockchain() *Blockchain {
 
 func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
-	target.Lsh(target, uint(256-16)) // Difficulty level
+	target.Lsh(target, 256-16) // Difficulty
 	return &ProofOfWork{b, target}
 }
 
 func (pow *ProofOfWork) prepareData(nonce int) []byte {
-	data := bytes.Join(
-		[][]byte{
-			pow.block.PrevBlockHash,
-			pow.hashTransactions(),
-			IntToHex(pow.block.Timestamp),
-			IntToHex(int64(nonce)),
-		},
-		[]byte{},
-	)
+	data := bytes.Join([][]byte{
+		pow.block.PrevBlockHash,
+		pow.hashTransactions(),
+		IntToHex(pow.block.Timestamp),
+		IntToHex(int64(nonce)),
+	}, []byte{})
 	return data
 }
 
@@ -109,11 +99,10 @@ func (pow *ProofOfWork) hashTransactions() []byte {
 	var txHashes [][]byte
 	for _, tx := range pow.block.Transactions {
 		txData := []byte(fmt.Sprintf("%s%s%f", tx.Sender, tx.Recipient, tx.Amount))
-		txHash := sha256.Sum256(txData)
-		txHashes = append(txHashes, txHash[:])
+		hash := sha256.Sum256(txData)
+		txHashes = append(txHashes, hash[:])
 	}
-	merged := bytes.Join(txHashes, []byte{})
-	hash := sha256.Sum256(merged)
+	hash := sha256.Sum256(bytes.Join(txHashes, []byte{}))
 	return hash[:]
 }
 
@@ -121,19 +110,15 @@ func (pow *ProofOfWork) Run() ([]byte, int) {
 	var hashInt big.Int
 	var hash [32]byte
 	nonce := 0
-
 	for {
 		data := pow.prepareData(nonce)
 		hash = sha256.Sum256(data)
 		hashInt.SetBytes(hash[:])
-
 		if hashInt.Cmp(pow.target) == -1 {
 			break
-		} else {
-			nonce++
 		}
+		nonce++
 	}
-
 	return hash[:], nonce
 }
 
@@ -143,12 +128,9 @@ func IntToHex(n int64) []byte {
 
 func main() {
 	bc := NewBlockchain()
-
 	tx1 := &Transaction{"Alice", "Bob", 10}
 	tx2 := &Transaction{"Bob", "Charlie", 5}
-
 	bc.AddBlock([]*Transaction{tx1, tx2})
-
 	for _, block := range bc.blocks {
 		fmt.Printf("\nTimestamp: %d\n", block.Timestamp)
 		fmt.Printf("Previous Hash: %x\n", block.PrevBlockHash)
